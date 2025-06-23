@@ -15,7 +15,6 @@ import { registerControllers } from '@/controllers/controller';
 import { createAppDataStorageControllers } from '@/controllers/appDataStorage';
 import { createGetTextFromAppDataStorageUseCase } from '@/application/useCases/appDataStorage/getTextFromAppDataStorage';
 import { createSetTextInAppDataStorageUseCase } from '@/application/useCases/appDataStorage/setTextInAppDataStorage';
-import { copyFileDataStorage, createFileDataStorage } from '@/infra/dataStorage/fileDataStorage';
 import { createContextMenuControllers } from '@/controllers/contextMenu';
 import { createPopupContextMenuUseCase } from '@/application/useCases/contextMenu/popupContextMenu';
 import { createContextMenuProvider } from '@/infra/contextMenuProvider/contextMenuProvider';
@@ -70,7 +69,16 @@ import { createOpenPathUseCase } from '@/application/useCases/shell/openPath';
 import { createCopyWidgetDataStorageUseCase } from '@/application/useCases/widgetDataStorage/copyWidgetDataStorage';
 import { createOpenAppUseCase } from '@/application/useCases/shell/openApp';
 
+import { createMongoDataStorage } from '@/infra/dataStorage/mongoDataStorage';
+import { MongoClient } from 'mongodb';
+
+
 let appWindow: BrowserWindow | null = null; // ref to the app window
+
+const mongoUri = process.env.MONGODB_URI || '';
+const dbName = process.env.MONGODB_DB_NAME || '';
+const appDataCollection = process.env.MONGODB_APP_DATA_COLLECTION || '';
+const widgetDataCollectionPrefix = 'widgetDataStorage_';
 
 if (!app.requestSingleInstanceLock()) {
   // there is another instance of the app running
@@ -123,15 +131,32 @@ if (!app.requestSingleInstanceLock()) {
     const ipcMainEventValidator = createIpcMainEventValidator(channelPrefix, hostFreeterApp);
     const ipcMain = createIpcMain(ipcMainEventValidator);
 
-    const appDataStorage = await createFileDataStorage('string', join(app.getPath('appData'), 'freeter2', 'freeter-data'));
+    const logDebugInfo = () => {
+      console.log('DEBUG');
+      console.log('MongoDB URI:', mongoUri);
+      console.log('Database Name:', dbName);
+      console.log('App Data Collection:', appDataCollection);
+      console.log('Widget Data Collection Prefix:', widgetDataCollectionPrefix);
+    };
+
+    logDebugInfo();
+
+    const mongoClient = new MongoClient(mongoUri);
+    await mongoClient.connect();
+
+    const appDataStorage = await createMongoDataStorage(mongoClient, dbName, appDataCollection);
+
     const getTextFromAppDataStorageUseCase = createGetTextFromAppDataStorageUseCase({ appDataStorage });
     const setTextInAppDataStorageUseCase = createSetTextInAppDataStorageUseCase({ appDataStorage });
 
-    const getWidgetDataStoragePath = (id: string) => join(app.getPath('appData'), 'freeter2', 'freeter-data', 'widgets', id);
     const widgetDataStorageManager = createObjectManager(
-      (id) => createFileDataStorage('string', getWidgetDataStoragePath(id)),
-      (fromId, toId) => copyFileDataStorage(getWidgetDataStoragePath(fromId), getWidgetDataStoragePath(toId))
+      (id) => createMongoDataStorage(mongoClient, dbName, `${widgetDataCollectionPrefix}${id}`),
+      async (fromId, toId) => {
+        // TODO: implement copy between MongoDB collections if needed
+        return false;
+      }
     );
+
     const getTextFromWidgetDataStorageUseCase = createGetTextFromWidgetDataStorageUseCase({ widgetDataStorageManager });
     const setTextInWidgetDataStorageUseCase = createSetTextInWidgetDataStorageUseCase({ widgetDataStorageManager });
     const deleteInWidgetDataStorageUseCase = createDeleteInWidgetDataStorageUseCase({ widgetDataStorageManager });
