@@ -235,6 +235,10 @@ export function createUiState(): UiState {
         activateWorkflowsOnProjectSwitch: true,
         workflowInactiveAfter: -1
       },
+      mongoDB: {
+        uri: 'mongodb://localhost:27017',
+        databaseName: 'freeter'
+      },
       uiTheme: defaultUiThemeId
     },
     apps: {

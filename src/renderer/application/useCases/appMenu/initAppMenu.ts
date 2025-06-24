@@ -79,6 +79,11 @@ export function createInitAppMenuUseCase({
     label: 'Check for updates...'
   };
 
+  const itemMongoDBConfig: MenuItem = {
+    doAction: async () => shellProvider.openExternal('https://freeter.io/docs/mongodb'),
+    label: 'MongoDB Configuration'
+  };
+
   const itemQuit: MenuItem = {
     role: 'quit'
   }
@@ -104,6 +109,8 @@ export function createInitAppMenuUseCase({
     label: '&File',
     submenu: [
       itemSettings,
+      itemSeparator,
+      itemMongoDBConfig,
       itemSeparator,
       itemQuit
     ]

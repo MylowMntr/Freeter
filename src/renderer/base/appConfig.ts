@@ -9,4 +9,9 @@ export interface AppConfig {
   mainHotkey: string;
   memSaver: MemSaverConfigApp;
   uiTheme: string;
+  mongoDB:
+  {
+    uri: string;
+    databaseName: string;
+  };
 }
