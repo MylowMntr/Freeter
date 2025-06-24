@@ -71,6 +71,8 @@ import { createOpenAppUseCase } from '@/application/useCases/shell/openApp';
 
 import { createMongoDataStorage } from '@/infra/dataStorage/mongoDataStorage';
 import { MongoClient } from 'mongodb';
+import { ipcMain } from 'electron';
+import { Menu, MenuItemConstructorOptions } from 'electron';
 
 
 let appWindow: BrowserWindow | null = null; // ref to the app window
@@ -79,6 +81,18 @@ const mongoUri = process.env.MONGODB_URI || '';
 const dbName = process.env.MONGODB_DB_NAME || '';
 const appDataCollection = process.env.MONGODB_APP_DATA_COLLECTION || '';
 const widgetDataCollectionPrefix = 'widgetDataStorage_';
+
+const logDebugInfo = () => {
+  console.log('DEBUG');
+  console.log('MongoDB URI:', mongoUri);
+  console.log('Database Name:', dbName);
+  console.log('App Data Collection:', appDataCollection);
+  console.log('Widget Data Collection Prefix:', widgetDataCollectionPrefix);
+};
+
+logDebugInfo();
+
+const mongoClient = new MongoClient(mongoUri);
 
 if (!app.requestSingleInstanceLock()) {
   // there is another instance of the app running
@@ -131,18 +145,8 @@ if (!app.requestSingleInstanceLock()) {
     const ipcMainEventValidator = createIpcMainEventValidator(channelPrefix, hostFreeterApp);
     const ipcMain = createIpcMain(ipcMainEventValidator);
 
-    const logDebugInfo = () => {
-      console.log('DEBUG');
-      console.log('MongoDB URI:', mongoUri);
-      console.log('Database Name:', dbName);
-      console.log('App Data Collection:', appDataCollection);
-      console.log('Widget Data Collection Prefix:', widgetDataCollectionPrefix);
-    };
-
-    logDebugInfo();
-
-    const mongoClient = new MongoClient(mongoUri);
     await mongoClient.connect();
+
 
     const appDataStorage = await createMongoDataStorage(mongoClient, dbName, appDataCollection);
 
@@ -270,3 +274,83 @@ if (!app.requestSingleInstanceLock()) {
   });
 
 }
+
+import { BrowserWindow as ElectronBrowserWindow } from 'electron';
+
+function createMongoPopupWindow() {
+  const mongoWindow = new ElectronBrowserWindow({
+    width: 600,
+    height: 400,
+    webPreferences: {
+      preload: join(__dirname, 'preload.js'),
+      contextIsolation: true,
+    },
+  });
+
+  mongoWindow.loadURL(`${schemeFreeterFile}://${hostFreeterApp}/mongo-popup.html`);
+
+  mongoWindow.on('closed', () => {
+    // Nettoyage si nécessaire
+  });
+
+  return mongoWindow;
+}
+
+app.whenReady().then(() => {
+  const trayProvider = createTrayProvider(join(app.getAppPath(), 'assets', 'app-icons', '16.png'));
+
+  const menuItems = [
+    {
+      label: 'Open MongoDB Manager',
+      click: () => {
+        createMongoPopupWindow();
+      },
+    },
+  ];
+
+  trayProvider.setMenu(menuItems);
+
+  // Définir le menu principal avec typage explicite
+  const menuTemplate: MenuItemConstructorOptions[] = [
+    {
+      label: 'File',
+      submenu: [
+        {
+          label: 'MongoDB Manager',
+          click: () => {
+            createMongoPopupWindow();
+          },
+        },
+        { role: 'quit' },
+      ],
+    },
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+      ],
+    },
+  ];
+
+  const appMenu = Menu.buildFromTemplate(menuTemplate);
+  Menu.setApplicationMenu(appMenu);
+});
+
+ipcMain.handle('save-mongo-data', async (_event, { key, data }) => {
+  const appDataStorage = await createMongoDataStorage(mongoClient, dbName, appDataCollection);
+  await appDataStorage.setText(key, data);
+});
+
+ipcMain.handle('get-mongo-data', async () => {
+  const appDataStorage = await createMongoDataStorage(mongoClient, dbName, appDataCollection);
+  const keys = await appDataStorage.getKeys();
+  return Promise.all(keys.map(async (key) => ({
+    key,
+    data: await appDataStorage.getText(key),
+  })));
+});
